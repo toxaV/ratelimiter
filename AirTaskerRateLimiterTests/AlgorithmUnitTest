@@ -1,0 +1,61 @@
+using System;
+using System.Collections.Generic;
+using AspNetCoreMiddleware.Algorithm;
+using Xunit;
+
+namespace AirTaskerRateLimiterTests
+{
+    public class RateLimitUnitTest
+    {
+        /// <summary>
+        /// Test for algorithm of RateLimit service:
+        /// Add all the available request using count (example: allowed 5 requests in 20 sec)
+        /// 1. Insert 5 requests at second 1 => Check each time algorithm allows to execute request
+        /// 2. Check queue contains 5 elements
+        /// 3. Send another request => Check algorithm will not allow to execute request
+        /// 4. Check queue contains 5 elements => Ignoring the 6th we sent recently
+        /// 5. Wait until expired
+        /// 6. Add new request, check if allowed to execute, check queue was cleaned (expired DateTimes was removed)
+        /// 7. Check queue contains 1 element
+        /// </summary>
+        /// <param name="sec">Amount of seconds</param>
+        /// <param name="count">Attempts in seconds</param>
+        [Theory]
+        [InlineData(20, 5)]
+        public void AlgorithmTestCase(int sec, int count)
+        {
+            RateLimitAlgorithm algorithm = new RateLimitAlgorithm();
+
+            Queue<DateTime> queue = null;
+
+            DateTime current = DateTime.UtcNow;
+
+            // 1. Insert 5 requests at second 1 => Check each time algorithm allows to execute request
+            for (int i=0; i<count; i++)
+                Assert.Equal(0, algorithm.RequestAllowedInSec(sec, 5, current, ref queue));
+
+            // 2. Check queue contains 5 elements
+            Assert.Equal(count, queue.Count);
+
+            // 3. Send another request => Check algorithm will not allow to execute request
+            Assert.NotEqual(0, algorithm.RequestAllowedInSec(sec, 5, current, ref queue));
+
+            // 4. Check queue contains 5 elements => Ignoring the 6th we sent recently
+            Assert.Equal(count, queue.Count);
+
+            // 5. Wait until expired
+            current = current.AddSeconds(sec - 1);
+
+            // 5.1 Check queue still have 5 elements
+            Assert.Equal(count, queue.Count);
+
+            current= current.AddSeconds(3);
+
+            // 6. Add new request, check if allowed to execute, check queue was cleaned (expired DateTimes was removed)
+            Assert.Equal(0, algorithm.RequestAllowedInSec(sec, 5, current, ref queue));
+
+            // 7. Check queue contains 1 element
+            Assert.Single(queue);
+        }
+    }
+}
